@@ -24,63 +24,47 @@ module.exports = async (req, res) => {
 
   try {
     switch (event.type) {
-      // ✅ Payment Succeeded
+      // ✅ Payment succeeded
       case "payment_intent.succeeded": {
         const pi = event.data.object;
         console.log("✅ Payment succeeded:", pi.id);
 
         await pool.query(
-          `INSERT INTO transactions (txn_id, payment_intent_id, amount, currency, status, metadata)
-           VALUES ($1, $2, $3, $4, $5, $6)
-           ON CONFLICT (payment_intent_id)
-           DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()`,
-          [
-            pi.id,
-            pi.id,
-            pi.amount.toString(),
-            pi.currency,
-            "succeeded",
-            JSON.stringify(pi.metadata || {})
-          ]
+          `UPDATE transactions 
+             SET status=$1, updated_at=NOW() 
+           WHERE payment_intent_id=$2`,
+          ["succeeded", pi.id]
         );
         break;
       }
 
-      // ❌ Payment Failed
+      // ❌ Payment failed
       case "payment_intent.payment_failed": {
         const pi = event.data.object;
         console.log("❌ Payment failed:", pi.id);
 
         await pool.query(
-          `INSERT INTO transactions (txn_id, payment_intent_id, amount, currency, status, metadata)
-           VALUES ($1, $2, $3, $4, $5, $6)
-           ON CONFLICT (payment_intent_id)
-           DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()`,
-          [
-            pi.id,
-            pi.id,
-            pi.amount.toString(),
-            pi.currency,
-            "failed",
-            JSON.stringify(pi.metadata || {})
-          ]
+          `UPDATE transactions 
+             SET status=$1, updated_at=NOW() 
+           WHERE payment_intent_id=$2`,
+          ["failed", pi.id]
         );
         break;
       }
 
-      // ↩️ Refund Events
+      // ↩️ Refund events
       case "charge.refunded":
       case "refund.created":
       case "refund.updated": {
         const obj = event.data.object;
-        const paymentIntentId = obj.payment_intent || obj.payment_intent_id;
+        const paymentIntentId = obj.payment_intent;
 
         console.log("↩️ Refund processed for:", paymentIntentId);
 
         if (paymentIntentId) {
           await pool.query(
             `UPDATE transactions 
-             SET status=$1, updated_at=NOW() 
+               SET status=$1, updated_at=NOW() 
              WHERE payment_intent_id=$2`,
             ["refunded", paymentIntentId]
           );
@@ -88,7 +72,7 @@ module.exports = async (req, res) => {
         break;
       }
 
-      // ℹ️ Catch-all for unhandled events
+      // ℹ️ Ignore others
       default:
         console.debug(`ℹ️ Unhandled event type ${event.type}`);
     }
@@ -96,6 +80,6 @@ module.exports = async (req, res) => {
     console.error("❌ DB update error:", err);
   }
 
-  // Always respond to Stripe quickly
+  // Always respond quickly
   res.json({ received: true });
 };
