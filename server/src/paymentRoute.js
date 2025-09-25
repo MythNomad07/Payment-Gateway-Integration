@@ -53,14 +53,24 @@ router.post("/create-payment-intent", async (req, res) => {
   }
 });
 
-// ✅ Check transaction status
-router.get("/status/:txn_id", async (req, res) => {
+// ✅ Check transaction status (by txn_id or payment_intent_id)
+router.get("/status/:id", async (req, res) => {
   try {
-    const { txn_id } = req.params;
-    const result = await pool.query(
-      "SELECT * FROM transactions WHERE txn_id = $1",
-      [txn_id]
-    );
+    const { id } = req.params;
+
+    let result;
+
+    // Detect if it's a UUID (txn_id) or a Stripe PI (payment_intent_id)
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    if (uuidRegex.test(id)) {
+      // Looks like a UUID → search by txn_id
+      result = await pool.query("SELECT * FROM transactions WHERE txn_id = $1", [id]);
+    } else {
+      // Otherwise → assume it's a payment_intent_id
+      result = await pool.query("SELECT * FROM transactions WHERE payment_intent_id = $1", [id]);
+    }
 
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Transaction not found" });
