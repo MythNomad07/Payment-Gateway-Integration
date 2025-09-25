@@ -14,11 +14,26 @@
     .succeeded { color: green; }
     .failed { color: red; }
     .refunded { color: orange; }
+    .controls { margin-bottom: 15px; }
+    input, select, button { margin-right: 10px; padding: 6px; }
+    button.refund { background: #f44336; color: white; border: none; padding: 5px 10px; cursor: pointer; }
+    button.refund:disabled { background: #ccc; cursor: not-allowed; }
   </style>
 </head>
 <body>
   <h2>Transactions Dashboard</h2>
-  <button onclick="loadTransactions()">🔄 Refresh</button>
+
+  <div class="controls">
+    <input type="text" id="search" placeholder="Search Txn ID or PaymentIntent ID">
+    <select id="statusFilter">
+      <option value="">All Status</option>
+      <option value="succeeded">Succeeded</option>
+      <option value="failed">Failed</option>
+      <option value="refunded">Refunded</option>
+    </select>
+    <button onclick="loadTransactions()">🔄 Refresh</button>
+  </div>
+
   <table>
     <thead>
       <tr>
@@ -30,42 +45,92 @@
         <th>Status</th>
         <th>Created</th>
         <th>Updated</th>
+        <th>Actions</th>
       </tr>
     </thead>
     <tbody id="txn-table">
-      <tr><td colspan="8">Loading...</td></tr>
+      <tr><td colspan="9">Loading...</td></tr>
     </tbody>
   </table>
 
   <script>
+    // 🔑 Use the same ADMIN_KEY as in your Render environment
+    const ADMIN_KEY = "admin123";
+
     async function loadTransactions() {
       const tbody = document.getElementById("txn-table");
-      tbody.innerHTML = "<tr><td colspan='8'>Loading...</td></tr>";
+      const search = document.getElementById("search").value.trim().toLowerCase();
+      const filter = document.getElementById("statusFilter").value;
+
+      tbody.innerHTML = "<tr><td colspan='9'>Loading...</td></tr>";
 
       try {
-        const res = await fetch("/api/payment/all");
+        const res = await fetch("/api/payment/all", {
+          headers: { Authorization: "Bearer " + ADMIN_KEY }
+        });
         if (!res.ok) throw new Error(await res.text());
-        const txns = await res.json();
+        let txns = await res.json();
+
+        // Filters
+        if (search) {
+          txns = txns.filter(t =>
+            t.txn_id.toLowerCase().includes(search) ||
+            t.payment_intent_id.toLowerCase().includes(search)
+          );
+        }
+        if (filter) {
+          txns = txns.filter(t => t.status === filter);
+        }
 
         if (txns.length === 0) {
-          tbody.innerHTML = "<tr><td colspan='8'>No transactions found.</td></tr>";
+          tbody.innerHTML = "<tr><td colspan='9'>No transactions found.</td></tr>";
           return;
         }
 
-        tbody.innerHTML = txns.map(t => `
-          <tr>
-            <td>${t.id}</td>
-            <td>${t.txn_id}</td>
-            <td>${t.payment_intent_id}</td>
-            <td>${(t.amount/100).toFixed(2)}</td>
-            <td>${t.currency.toUpperCase()}</td>
-            <td class="status ${t.status}">${t.status}</td>
-            <td>${new Date(t.created_at).toLocaleString()}</td>
-            <td>${new Date(t.updated_at).toLocaleString()}</td>
-          </tr>
-        `).join("");
+        tbody.innerHTML = txns.map(t => {
+          const amount = (parseInt(t.amount, 10) / 100).toFixed(2);
+          return `
+            <tr>
+              <td>${t.id}</td>
+              <td>${t.txn_id}</td>
+              <td>${t.payment_intent_id}</td>
+              <td>${amount}</td>
+              <td>${t.currency.toUpperCase()}</td>
+              <td class="status ${t.status}">${t.status}</td>
+              <td>${new Date(t.created_at).toLocaleString()}</td>
+              <td>${new Date(t.updated_at).toLocaleString()}</td>
+              <td>
+                <button class="refund"
+                  onclick="refund('${t.payment_intent_id}')"
+                  ${t.status !== 'succeeded' ? "disabled" : ""}>
+                  Refund
+                </button>
+              </td>
+            </tr>
+          `;
+        }).join("");
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan='8'>❌ Error: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan='9'>❌ Error: ${err.message}</td></tr>`;
+      }
+    }
+
+    async function refund(paymentIntentId) {
+      if (!confirm("Refund this payment?")) return;
+      try {
+        const res = await fetch("/api/payment/refund", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + ADMIN_KEY
+          },
+          body: JSON.stringify({ payment_intent_id: paymentIntentId })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Refund failed");
+        alert("✅ Refund successful!");
+        loadTransactions();
+      } catch (err) {
+        alert("❌ " + err.message);
       }
     }
 
