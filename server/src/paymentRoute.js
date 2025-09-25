@@ -83,4 +83,17 @@ router.get("/status/:id", async (req, res) => {
   }
 });
 
+// ✅ List all recent transactions (for dashboard)
+router.get("/all", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM transactions ORDER BY created_at DESC LIMIT 50"
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("❌ Error fetching all transactions:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
