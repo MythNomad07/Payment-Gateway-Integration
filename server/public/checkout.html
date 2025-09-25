@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Stripe Checkout Test</title>
   <script src="https://js.stripe.com/v3/"></script>
   <style>
@@ -22,7 +22,7 @@
   <button id="payBtn">Pay Now</button>
   <p id="message" class="muted"></p>
 
-  <!-- Status & txn area -->
+  <!-- Status & txn area (hidden until used) -->
   <div id="status-area" style="display:none; margin-top: 20px;">
     <p id="success-msg" style="color:green; font-weight:bold;"></p>
     <p><strong>Txn ID:</strong> <span id="txn-id" style="word-break:break-all"></span></p>
@@ -38,7 +38,7 @@
   </div>
 
   <script>
-    // Replace with your Stripe publishable key
+    // Replace with your publishable key
     const stripe = Stripe("pk_test_51S9o1aIvIjWabNzf4j1NShDzZRBG2JTB8HPGVwAV9AB0E2ioN2z1FmX6fjShGsc5q3AmYPQN9BoExhFZaN8xoQ2P00RlXLlmwJ");
 
     const elements = stripe.elements();
@@ -59,22 +59,22 @@
       statusResult.textContent = JSON.stringify(obj, null, 2);
     }
 
-    // Copy txn id
     copyBtn.addEventListener("click", () => {
       const t = txnIdSpan.textContent.trim();
       if (!t) return alert("No Txn ID to copy.");
       navigator.clipboard?.writeText(t).then(() => {
         alert("Txn ID copied to clipboard.");
-      }).catch(() => { alert("Copy failed — select and copy manually."); });
+      }).catch(()=>{ alert("Copy failed — select and copy manually."); });
     });
 
-    // Check status button
     checkBtn.addEventListener("click", async () => {
       const txn = (statusInput.value || txnIdSpan.textContent || "").trim();
-      if (!txn) return alert("Please provide a Txn ID.");
+      if (!txn) {
+        return alert("Please provide a Txn ID (either paste it or use the current one).");
+      }
       statusResult.textContent = "Checking...";
       try {
-        const res = await fetch(`http://localhost:3000/api/payment/status/${txn}`);
+        const res = await fetch(`/api/payment/status/${txn}`);
         if (!res.ok) {
           const txt = await res.text();
           statusResult.textContent = `Error: ${res.status} ${txt}`;
@@ -87,19 +87,23 @@
       }
     });
 
-    // Pay button
     payBtn.addEventListener("click", async () => {
       payBtn.disabled = true;
       msg.textContent = "Processing...";
 
       try {
-        const res = await fetch("http://localhost:3000/api/payment/create-payment-intent", {
+        // ✅ Notice: no "http://localhost:3000" — works on both local & Render
+        const res = await fetch("/api/payment/create-payment-intent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ amount: 5000, currency: "usd" })
         });
 
-        if (!res.ok) throw new Error(await res.text() || `Server returned ${res.status}`);
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(errText || `Server returned ${res.status}`);
+        }
+
         const data = await res.json();
         console.log("Backend response:", data);
 
@@ -113,21 +117,19 @@
         });
 
         if (error) {
-          msg.textContent = `❌ Payment failed: ${error.message}`;
-          statusResult.textContent = `Payment failed: ${error.message}`;
+          msg.textContent = `❌ Payment failed: ${error.message || "Unknown error"}`;
+          statusResult.textContent = `Payment failed: ${error.message || "Unknown error"}`;
           payBtn.disabled = false;
           return;
         }
 
         if (paymentIntent && paymentIntent.status === "succeeded") {
           msg.textContent = "";
-          successMsg.textContent = "✅ Payment successful!";
+          successMsg.innerHTML = "✅ Payment successful!";
           txnIdSpan.textContent = data.txn_id;
           statusArea.style.display = "block";
-
-          // show DB status right away (may be "created" until webhook updates)
           try {
-            const r2 = await fetch(`http://localhost:3000/api/payment/status/${data.txn_id}`);
+            const r2 = await fetch(`/api/payment/status/${data.txn_id}`);
             if (r2.ok) {
               const j2 = await r2.json();
               showStatusJson(j2);
@@ -142,7 +144,7 @@
         }
       } catch (err) {
         console.error(err);
-        msg.textContent = `❌ Error: ${err.message}`;
+        msg.textContent = `❌ Error: ${err.message || "unknown"}`;
       } finally {
         payBtn.disabled = false;
       }
