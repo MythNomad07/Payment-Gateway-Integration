@@ -1,4 +1,4 @@
-#Payment Gateway Integration
+Payment Gateway Integration
 
 This project demonstrates the integration of a payment gateway into a web application. It is designed to showcase how secure online transactions can be handled in a professional and seamless manner.
 
