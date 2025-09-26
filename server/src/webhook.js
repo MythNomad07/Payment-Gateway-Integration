@@ -27,17 +27,15 @@ module.exports = async (req, res) => {
       // ✅ Payment succeeded
       case "payment_intent.succeeded": {
         const pi = event.data.object;
-        const txnId = pi.metadata?.txn_id; // our UUID
+        const txnId = pi.metadata?.txn_id;
         console.log("✅ Payment succeeded:", pi.id, "txn_id:", txnId);
 
-        if (txnId) {
-          await pool.query(
-            `UPDATE transactions 
-             SET status=$1, updated_at=NOW() 
-             WHERE txn_id=$2`,
-            ["succeeded", txnId]
-          );
-        }
+        await pool.query(
+          `UPDATE transactions 
+           SET status=$1, updated_at=NOW() 
+           WHERE ${txnId ? "txn_id" : "payment_intent_id"}=$2`,
+          ["succeeded", txnId || pi.id]
+        );
         break;
       }
 
@@ -47,18 +45,16 @@ module.exports = async (req, res) => {
         const txnId = pi.metadata?.txn_id;
         console.log("❌ Payment failed:", pi.id, "txn_id:", txnId);
 
-        if (txnId) {
-          await pool.query(
-            `UPDATE transactions 
-             SET status=$1, updated_at=NOW() 
-             WHERE txn_id=$2`,
-            ["failed", txnId]
-          );
-        }
+        await pool.query(
+          `UPDATE transactions 
+           SET status=$1, updated_at=NOW() 
+           WHERE ${txnId ? "txn_id" : "payment_intent_id"}=$2`,
+          ["failed", txnId || pi.id]
+        );
         break;
       }
 
-      // ↩️ Refund events (only payment_intent_id is available here)
+      // ↩️ Refund events
       case "charge.refunded":
       case "refund.created":
       case "refund.updated": {
