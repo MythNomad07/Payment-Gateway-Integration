@@ -18,57 +18,75 @@
     input, select, button { margin-right: 10px; padding: 6px; }
     button.refund { background: #f44336; color: white; border: none; padding: 5px 10px; cursor: pointer; }
     button.refund:disabled { background: #ccc; cursor: not-allowed; }
+    #login { max-width: 300px; margin: 100px auto; padding: 20px; border: 1px solid #ddd; border-radius: 6px; text-align: center; }
+    #dashboard { display: none; }
   </style>
 </head>
 <body>
-  <h2>Transactions Dashboard</h2>
-
-  <div class="controls">
-    <input type="text" id="search" placeholder="Search Txn ID or PaymentIntent ID">
-    <select id="statusFilter">
-      <option value="">All Status</option>
-      <option value="succeeded">Succeeded</option>
-      <option value="failed">Failed</option>
-      <option value="refunded">Refunded</option>
-    </select>
-    <button onclick="loadTransactions()">🔄 Refresh</button>
-    <button onclick="clearKey()">🔑 Change Admin Key</button>
+  <!-- Login Screen -->
+  <div id="login">
+    <h2>Admin Login</h2>
+    <input type="password" id="adminKeyInput" placeholder="Enter Admin Key"><br><br>
+    <button onclick="login()">Login</button>
   </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Txn ID</th>
-        <th>PaymentIntent ID</th>
-        <th>Amount</th>
-        <th>Currency</th>
-        <th>Status</th>
-        <th>Created</th>
-        <th>Updated</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody id="txn-table">
-      <tr><td colspan="9">Loading...</td></tr>
-    </tbody>
-  </table>
+  <!-- Dashboard -->
+  <div id="dashboard">
+    <h2>Transactions Dashboard</h2>
+
+    <div class="controls">
+      <input type="text" id="search" placeholder="Search Txn ID or PaymentIntent ID">
+      <select id="statusFilter">
+        <option value="">All Status</option>
+        <option value="succeeded">Succeeded</option>
+        <option value="failed">Failed</option>
+        <option value="refunded">Refunded</option>
+      </select>
+      <button onclick="loadTransactions()">🔄 Refresh</button>
+      <button onclick="logout()">🚪 Logout</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Txn ID</th>
+          <th>PaymentIntent ID</th>
+          <th>Amount</th>
+          <th>Currency</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th>Updated</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="txn-table">
+        <tr><td colspan="9">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
 
   <script>
-    function getAdminKey() {
-      let key = localStorage.getItem("ADMIN_KEY");
+    let ADMIN_KEY = null;
+
+    function login() {
+      const key = document.getElementById("adminKeyInput").value.trim();
       if (!key) {
-        key = prompt("Enter Admin Key:");
-        if (key) {
-          localStorage.setItem("ADMIN_KEY", key);
-        }
+        alert("Please enter your Admin Key");
+        return;
       }
-      return key;
+      localStorage.setItem("ADMIN_KEY", key);
+      ADMIN_KEY = key;
+      document.getElementById("login").style.display = "none";
+      document.getElementById("dashboard").style.display = "block";
+      loadTransactions();
     }
 
-    function clearKey() {
+    function logout() {
       localStorage.removeItem("ADMIN_KEY");
-      alert("Admin key cleared. Please refresh and enter again.");
+      ADMIN_KEY = null;
+      document.getElementById("dashboard").style.display = "none";
+      document.getElementById("login").style.display = "block";
     }
 
     async function loadTransactions() {
@@ -78,12 +96,6 @@
 
       tbody.innerHTML = "<tr><td colspan='9'>Loading...</td></tr>";
 
-      const ADMIN_KEY = getAdminKey();
-      if (!ADMIN_KEY) {
-        tbody.innerHTML = "<tr><td colspan='9'>❌ No Admin Key provided.</td></tr>";
-        return;
-      }
-
       try {
         const res = await fetch("/api/payment/all", {
           headers: { Authorization: "Bearer " + ADMIN_KEY }
@@ -91,7 +103,6 @@
         if (!res.ok) throw new Error(await res.text());
         let txns = await res.json();
 
-        // Apply filters
         if (search) {
           txns = txns.filter(t =>
             t.txn_id.toLowerCase().includes(search) ||
@@ -118,8 +129,8 @@
             <td>${new Date(t.created_at).toLocaleString()}</td>
             <td>${new Date(t.updated_at).toLocaleString()}</td>
             <td>
-              <button class="refund" 
-                onclick="refund('${t.payment_intent_id}')" 
+              <button class="refund"
+                onclick="refund('${t.payment_intent_id}')"
                 ${t.status !== 'succeeded' ? "disabled" : ""}>
                 Refund
               </button>
@@ -132,10 +143,7 @@
     }
 
     async function refund(paymentIntentId) {
-      const ADMIN_KEY = getAdminKey();
-      if (!ADMIN_KEY) return alert("No Admin Key provided.");
       if (!confirm("Refund this payment?")) return;
-
       try {
         const res = await fetch("/api/payment/refund", {
           method: "POST",
@@ -154,7 +162,16 @@
       }
     }
 
-    loadTransactions();
+    // Auto-login if key is already saved
+    window.onload = () => {
+      const savedKey = localStorage.getItem("ADMIN_KEY");
+      if (savedKey) {
+        ADMIN_KEY = savedKey;
+        document.getElementById("login").style.display = "none";
+        document.getElementById("dashboard").style.display = "block";
+        loadTransactions();
+      }
+    };
   </script>
 </body>
 </html>
