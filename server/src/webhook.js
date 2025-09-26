@@ -10,7 +10,6 @@ module.exports = async (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
 
-  // 🔹 Verify Stripe signature
   try {
     event = stripe.webhooks.constructEvent(
       req.body,
@@ -31,42 +30,67 @@ module.exports = async (req, res) => {
         console.log("✅ Payment succeeded:", pi.id, "txn_id:", txnId);
 
         await pool.query(
-          `UPDATE transactions 
-           SET status=$1, updated_at=NOW() 
+          `UPDATE transactions
+           SET status=$1, updated_at=NOW()
            WHERE ${txnId ? "txn_id" : "payment_intent_id"}=$2`,
           ["succeeded", txnId || pi.id]
         );
         break;
       }
 
-      // ❌ Payment failed
-      case "payment_intent.payment_failed": {
+      // ❌ Payment failed (PI-level)
+      case "payment_intent.payment_failed":
+      case "payment_intent.canceled": {
         const pi = event.data.object;
         const txnId = pi.metadata?.txn_id;
-        console.log("❌ Payment failed:", pi.id, "txn_id:", txnId);
+        console.log("❌ Payment failed/canceled:", pi.id, "txn_id:", txnId);
 
         await pool.query(
-          `UPDATE transactions 
-           SET status=$1, updated_at=NOW() 
+          `UPDATE transactions
+           SET status=$1, updated_at=NOW(), metadata = metadata || $3::jsonb
            WHERE ${txnId ? "txn_id" : "payment_intent_id"}=$2`,
-          ["failed", txnId || pi.id]
+          [
+            "failed",
+            txnId || pi.id,
+            JSON.stringify({ failure_reason: pi.last_payment_error?.message || "unknown" }),
+          ]
         );
         break;
       }
 
-      // ↩️ Refund events
+      // ❌ Charge failed (sometimes fired instead of PI failed)
+      case "charge.failed": {
+        const charge = event.data.object;
+        const paymentIntentId = charge.payment_intent;
+        console.log("❌ Charge failed for:", paymentIntentId);
+
+        if (paymentIntentId) {
+          await pool.query(
+            `UPDATE transactions
+             SET status=$1, updated_at=NOW(), metadata = metadata || $3::jsonb
+             WHERE payment_intent_id=$2`,
+            [
+              "failed",
+              paymentIntentId,
+              JSON.stringify({ failure_reason: charge.failure_message || "charge_failed" }),
+            ]
+          );
+        }
+        break;
+      }
+
+      // ↩️ Refunds
       case "charge.refunded":
       case "refund.created":
       case "refund.updated": {
         const obj = event.data.object;
         const paymentIntentId = obj.payment_intent;
-
         console.log("↩️ Refund processed for:", paymentIntentId);
 
         if (paymentIntentId) {
           await pool.query(
-            `UPDATE transactions 
-             SET status=$1, updated_at=NOW() 
+            `UPDATE transactions
+             SET status=$1, updated_at=NOW()
              WHERE payment_intent_id=$2`,
             ["refunded", paymentIntentId]
           );
@@ -74,7 +98,6 @@ module.exports = async (req, res) => {
         break;
       }
 
-      // ℹ️ Ignore others
       default:
         console.debug(`ℹ️ Unhandled event type ${event.type}`);
     }
@@ -82,6 +105,5 @@ module.exports = async (req, res) => {
     console.error("❌ DB update error:", err);
   }
 
-  // Always respond quickly
   res.json({ received: true });
 };
