@@ -2,19 +2,31 @@
 const express = require("express");
 const Stripe = require("stripe");
 const { v4: uuidv4 } = require("uuid");
+const bcrypt = require("bcrypt");   // ✅ add bcrypt
 const pool = require("./db");
 
 const router = express.Router();
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
-// 🔑 Simple Admin Auth Middleware
-function requireAdmin(req, res, next) {
+// 🔑 Secure Admin Auth Middleware
+async function requireAdmin(req, res, next) {
   const auth = req.headers.authorization || "";
   const token = auth.replace("Bearer ", "");
-  if (token !== process.env.ADMIN_KEY) {
-    return res.status(403).json({ error: "Forbidden: Invalid Admin Key" });
+
+  if (!token) {
+    return res.status(403).json({ error: "Forbidden: Missing Admin Key" });
   }
-  next();
+
+  try {
+    const match = await bcrypt.compare(token, process.env.ADMIN_KEY_HASH);
+    if (!match) {
+      return res.status(403).json({ error: "Forbidden: Invalid Admin Key" });
+    }
+    next();
+  } catch (err) {
+    console.error("❌ Error checking admin key:", err);
+    return res.status(500).json({ error: "Internal auth error" });
+  }
 }
 
 // ✅ Create PaymentIntent + save to DB

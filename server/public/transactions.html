@@ -18,16 +18,18 @@
     input, select, button { margin-right: 10px; padding: 6px; }
     button.refund { background: #f44336; color: white; border: none; padding: 5px 10px; cursor: pointer; }
     button.refund:disabled { background: #ccc; cursor: not-allowed; }
-    #login { max-width: 300px; margin: 100px auto; padding: 20px; border: 1px solid #ddd; border-radius: 6px; text-align: center; }
+    #login { max-width: 320px; margin: 100px auto; padding: 20px; border: 1px solid #ddd; border-radius: 6px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     #dashboard { display: none; }
+    .error { color: red; margin-top: 10px; }
   </style>
 </head>
 <body>
   <!-- Login Screen -->
   <div id="login">
-    <h2>Admin Login</h2>
+    <h2>🔑 Admin Login</h2>
     <input type="password" id="adminKeyInput" placeholder="Enter Admin Key"><br><br>
     <button onclick="login()">Login</button>
+    <div id="loginError" class="error"></div>
   </div>
 
   <!-- Dashboard -->
@@ -72,7 +74,7 @@
     function login() {
       const key = document.getElementById("adminKeyInput").value.trim();
       if (!key) {
-        alert("Please enter your Admin Key");
+        document.getElementById("loginError").innerText = "⚠️ Please enter your Admin Key";
         return;
       }
       localStorage.setItem("ADMIN_KEY", key);
@@ -87,6 +89,8 @@
       ADMIN_KEY = null;
       document.getElementById("dashboard").style.display = "none";
       document.getElementById("login").style.display = "block";
+      document.getElementById("loginError").innerText = "";
+      document.getElementById("adminKeyInput").value = "";
     }
 
     async function loadTransactions() {
@@ -103,6 +107,7 @@
         if (!res.ok) throw new Error(await res.text());
         let txns = await res.json();
 
+        // Apply filters
         if (search) {
           txns = txns.filter(t =>
             t.txn_id.toLowerCase().includes(search) ||
@@ -139,6 +144,10 @@
         `).join("");
       } catch (err) {
         tbody.innerHTML = `<tr><td colspan='9'>❌ Error: ${err.message}</td></tr>`;
+        if (err.message.includes("Forbidden")) {
+          logout();
+          document.getElementById("loginError").innerText = "❌ Invalid Admin Key";
+        }
       }
     }
 
@@ -159,10 +168,11 @@
         loadTransactions();
       } catch (err) {
         alert("❌ " + err.message);
+        if (err.message.includes("Forbidden")) logout();
       }
     }
 
-    // Auto-login if key is already saved
+    // Auto-login if key exists
     window.onload = () => {
       const savedKey = localStorage.getItem("ADMIN_KEY");
       if (savedKey) {
