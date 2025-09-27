@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Transactions Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
     h2 { margin-bottom: 20px; }
@@ -18,13 +19,16 @@
     input, select, button { margin-right: 10px; padding: 6px; }
     button.refund { background: #f44336; color: white; border: none; padding: 5px 10px; cursor: pointer; }
     button.refund:disabled { background: #ccc; cursor: not-allowed; }
+    button.receipt { background: #2196F3; color: white; border: none; padding: 5px 10px; cursor: pointer; }
     #login { max-width: 320px; margin: 100px auto; padding: 20px; border: 1px solid #ddd; border-radius: 6px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     #dashboard { display: none; }
     .error { color: red; margin-top: 10px; }
+    #charts { margin-top: 40px; }
+    canvas { max-width: 600px; margin: 20px auto; display: block; }
   </style>
 </head>
 <body>
-  <!-- Login Screen -->
+  <!-- Login -->
   <div id="login">
     <h2>🔑 Admin Login</h2>
     <input type="password" id="adminKeyInput" placeholder="Enter Admin Key"><br><br>
@@ -66,6 +70,13 @@
         <tr><td colspan="9">Loading...</td></tr>
       </tbody>
     </table>
+
+    <!-- Analytics -->
+    <div id="charts">
+      <h3>📊 Analytics</h3>
+      <canvas id="statusChart"></canvas>
+      <canvas id="revenueChart"></canvas>
+    </div>
   </div>
 
   <script>
@@ -107,7 +118,7 @@
         if (!res.ok) throw new Error(await res.text());
         let txns = await res.json();
 
-        // Apply filters
+        // filters
         if (search) {
           txns = txns.filter(t =>
             t.txn_id.toLowerCase().includes(search) ||
@@ -118,11 +129,11 @@
           txns = txns.filter(t => t.status === filter);
         }
 
+        // update table
         if (txns.length === 0) {
           tbody.innerHTML = "<tr><td colspan='9'>No transactions found.</td></tr>";
           return;
         }
-
         tbody.innerHTML = txns.map(t => `
           <tr>
             <td>${t.id}</td>
@@ -139,9 +150,16 @@
                 ${t.status !== 'succeeded' ? "disabled" : ""}>
                 Refund
               </button>
+              <button class="receipt"
+                onclick="downloadReceipt('${t.payment_intent_id}')">
+                🧾 Receipt
+              </button>
             </td>
           </tr>
         `).join("");
+
+        // update charts
+        renderCharts(txns);
       } catch (err) {
         tbody.innerHTML = `<tr><td colspan='9'>❌ Error: ${err.message}</td></tr>`;
         if (err.message.includes("Forbidden")) {
@@ -172,7 +190,65 @@
       }
     }
 
-    // Auto-login if key exists
+    async function downloadReceipt(paymentIntentId) {
+      try {
+        const res = await fetch(`/api/payment/receipt/${paymentIntentId}`, {
+          headers: { Authorization: "Bearer " + ADMIN_KEY }
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `receipt-${paymentIntentId}.pdf`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        alert("❌ Failed to download receipt: " + err.message);
+      }
+    }
+
+    // charts
+    function renderCharts(txns) {
+      const ctx1 = document.getElementById("statusChart").getContext("2d");
+      const ctx2 = document.getElementById("revenueChart").getContext("2d");
+
+      const statusCounts = { succeeded: 0, failed: 0, refunded: 0 };
+      txns.forEach(t => {
+        if (statusCounts[t.status] !== undefined) statusCounts[t.status]++;
+      });
+
+      new Chart(ctx1, {
+        type: "pie",
+        data: {
+          labels: ["Succeeded", "Failed", "Refunded"],
+          datasets: [{
+            data: [statusCounts.succeeded, statusCounts.failed, statusCounts.refunded],
+            backgroundColor: ["green", "red", "orange"],
+          }]
+        }
+      });
+
+      const dailyRevenue = {};
+      txns.forEach(t => {
+        const date = new Date(t.created_at).toLocaleDateString();
+        if (!dailyRevenue[date]) dailyRevenue[date] = 0;
+        if (t.status === "succeeded") dailyRevenue[date] += t.amount / 100;
+      });
+
+      new Chart(ctx2, {
+        type: "bar",
+        data: {
+          labels: Object.keys(dailyRevenue),
+          datasets: [{
+            label: "Daily Revenue ($)",
+            data: Object.values(dailyRevenue),
+            backgroundColor: "blue"
+          }]
+        }
+      });
+    }
+
     window.onload = () => {
       const savedKey = localStorage.getItem("ADMIN_KEY");
       if (savedKey) {

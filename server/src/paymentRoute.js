@@ -1,9 +1,9 @@
-// server/src/paymentRoute.js
 const express = require("express");
 const Stripe = require("stripe");
 const { v4: uuidv4 } = require("uuid");
 const bcrypt = require("bcrypt");   // ✅ bcrypt for secure admin key
 const pool = require("./db");
+const PDFDocument = require("pdfkit"); // ✅ for PDF receipts
 
 const router = express.Router();
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
@@ -158,6 +158,56 @@ router.post("/verify-status", requireAdmin, async (req, res) => {
     res.json({ success: true, status, stripe_status: pi.status });
   } catch (err) {
     console.error("❌ Error in verify-status:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ Generate PDF Receipt (admin only)
+router.get("/receipt/:id", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      "SELECT * FROM transactions WHERE payment_intent_id=$1 OR txn_id=$1",
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Transaction not found" });
+    }
+
+    const txn = result.rows[0];
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=receipt-${txn.payment_intent_id}.pdf`
+    );
+
+    const doc = new PDFDocument();
+    doc.pipe(res);
+
+    // Header
+    doc.fontSize(20).text("🧾 Payment Receipt", { align: "center" });
+    doc.moveDown();
+
+    // Transaction details
+    doc.fontSize(12).text(`Transaction ID: ${txn.txn_id}`);
+    doc.text(`PaymentIntent ID: ${txn.payment_intent_id}`);
+    doc.text(`Amount: ${(txn.amount / 100).toFixed(2)} ${txn.currency.toUpperCase()}`);
+    doc.text(`Status: ${txn.status}`);
+    doc.text(`Created At: ${new Date(txn.created_at).toLocaleString()}`);
+    doc.text(`Updated At: ${new Date(txn.updated_at).toLocaleString()}`);
+
+    if (txn.metadata) {
+      doc.moveDown().text("Metadata:");
+      doc.font("Courier").text(JSON.stringify(txn.metadata, null, 2));
+      doc.font("Helvetica");
+    }
+
+    doc.end();
+  } catch (err) {
+    console.error("❌ Error generating receipt:", err);
     res.status(500).json({ error: err.message });
   }
 });
