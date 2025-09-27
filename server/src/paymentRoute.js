@@ -1,7 +1,8 @@
+// server/src/paymentRoute.js
 const express = require("express");
 const Stripe = require("stripe");
 const { v4: uuidv4 } = require("uuid");
-const bcrypt = require("bcrypt");   // ✅ bcrypt for secure admin key
+const bcrypt = require("bcryptjs");   // ✅ use bcryptjs for portability
 const pool = require("./db");
 const PDFDocument = require("pdfkit"); // ✅ for PDF receipts
 
