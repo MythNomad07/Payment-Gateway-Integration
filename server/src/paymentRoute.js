@@ -2,7 +2,7 @@
 const express = require("express");
 const Stripe = require("stripe");
 const { v4: uuidv4 } = require("uuid");
-const bcrypt = require("bcrypt");   // ✅ add bcrypt
+const bcrypt = require("bcrypt");   // ✅ bcrypt for secure admin key
 const pool = require("./db");
 
 const router = express.Router();
@@ -129,6 +129,35 @@ router.post("/refund", requireAdmin, async (req, res) => {
     res.json({ success: true, refund });
   } catch (err) {
     console.error("❌ Error processing refund:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ Verify and sync status with Stripe (admin only)
+router.post("/verify-status", requireAdmin, async (req, res) => {
+  try {
+    const { payment_intent_id } = req.body;
+    if (!payment_intent_id) {
+      return res.status(400).json({ error: "payment_intent_id required" });
+    }
+
+    // Ask Stripe for the latest info
+    const pi = await stripe.paymentIntents.retrieve(payment_intent_id);
+
+    let status = "created";
+    if (pi.status === "succeeded") status = "succeeded";
+    else if (pi.status === "canceled" || pi.status === "requires_payment_method") status = "failed";
+
+    await pool.query(
+      `UPDATE transactions 
+         SET status=$1, updated_at=NOW(), metadata = metadata || $3::jsonb 
+       WHERE payment_intent_id=$2`,
+      [status, payment_intent_id, JSON.stringify({ stripe_status: pi.status })]
+    );
+
+    res.json({ success: true, status, stripe_status: pi.status });
+  } catch (err) {
+    console.error("❌ Error in verify-status:", err);
     res.status(500).json({ error: err.message });
   }
 });
