@@ -142,7 +142,6 @@ router.post("/verify-status", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "payment_intent_id required" });
     }
 
-    // Ask Stripe for the latest info
     const pi = await stripe.paymentIntents.retrieve(payment_intent_id);
 
     let status = "created";
@@ -168,13 +167,22 @@ router.get("/receipt/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // ✅ Fix: cast to uuid when comparing txn_id
-    const result = await pool.query(
-      `SELECT * FROM transactions 
-       WHERE payment_intent_id = $1 
-       OR txn_id = $1::uuid`,
-      [id]
-    );
+    // ✅ Handle both UUID and Stripe PaymentIntent IDs safely
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    let result;
+    if (uuidRegex.test(id)) {
+      result = await pool.query(
+        "SELECT * FROM transactions WHERE txn_id = $1::uuid",
+        [id]
+      );
+    } else {
+      result = await pool.query(
+        "SELECT * FROM transactions WHERE payment_intent_id = $1",
+        [id]
+      );
+    }
 
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Transaction not found" });
