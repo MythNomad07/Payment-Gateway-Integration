@@ -1,34 +1,33 @@
-Payment Gateway Integration
+# Payment Gateway Integration (Stripe + Node.js)
 
-This project demonstrates the integration of a payment gateway into a web application. It is designed to showcase how secure online transactions can be handled in a professional and seamless manner.
+This project is a full-stack payment gateway integration built with **Node.js**, **Express**, **PostgreSQL**, and the **Stripe API**. It provides a secure and efficient payment processing system with complete transaction tracking, refund management, analytics, and PDF receipt generation.
 
-Features
+## Overview
+The application enables users to make payments securely through Stripe while providing administrators full visibility into transaction data and revenue analytics. It supports role-based access control, real-time status verification via Stripe webhooks, and dynamic reporting features.
 
-Clean and responsive payment page
-Secure and smooth transaction flow
-Sandbox/Test mode support for safe demo transactions
-Easy to configure with your own API keys
+## Key Features
+- **Stripe Payment Integration:** Secure checkout supporting test and live environments.
+- **Transaction Logging:** All payment details are stored and managed in PostgreSQL.
+- **Refund Management:** Admins can issue refunds directly from the dashboard.
+- **Admin Authentication:** Protected routes secured with bcrypt-hashed admin keys.
+- **Webhook Listener:** Automatically updates payment and refund statuses.
+- **Analytics Dashboard:** Visual representation of transactions and revenue trends.
+- **PDF Receipt Generation:** Downloadable payment receipts generated with PDFKit.
+- **Render Deployment:** Fully deployed and hosted backend for live use.
 
-Tech Stack
+## Technology Stack
+**Backend:** Node.js, Express.js  
+**Database:** PostgreSQL  
+**Payment Gateway:** Stripe API  
+**Authentication:** bcrypt.js  
+**Frontend:** HTML, CSS, JavaScript  
+**Visualization:** Chart.js  
+**PDF Generation:** PDFKit  
+**Hosting Platform:** Render  
 
-Frontend: HTML, CSS, JavaScript
-Backend: Node.js / PHP (depending on the setup)
-Payment Gateway: [Your Gateway, e.g., Razorpay / Stripe / PayPal]
+## Local Setup
 
-How It Works
-
-User enters payment details on the frontend.
-Request is securely sent to the payment gateway API.
-Payment gateway processes the transaction.
-Response is handled and displayed to the user (success or failure).
-
-Testing Payments
-
-Use test card details provided by the payment gateway.
-Example:
-Card Number: 4111 1111 1111 1111
-Expiry: Any future date
-CVV: 123
-Project Status
-
-Currently functional with test mode enabled. Can be extended for production by switching to live API keys and configuring webhooks for verification.
+### 1. Clone the Repository
+```bash
+git clone https://github.com/MythNomad07/Payment-Gateway-Integration.git
+cd Payment-Gateway-Integration/server
