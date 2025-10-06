@@ -2,7 +2,7 @@
 const express = require("express");
 const Stripe = require("stripe");
 const { v4: uuidv4 } = require("uuid");
-const bcrypt = require("bcryptjs");   // ✅ use bcryptjs for portability
+const bcrypt = require("bcryptjs"); // ✅ use bcryptjs for portability
 const pool = require("./db");
 const PDFDocument = require("pdfkit"); // ✅ for PDF receipts
 
@@ -168,8 +168,11 @@ router.get("/receipt/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
+    // ✅ Fix: cast to uuid when comparing txn_id
     const result = await pool.query(
-      "SELECT * FROM transactions WHERE payment_intent_id=$1 OR txn_id=$1",
+      `SELECT * FROM transactions 
+       WHERE payment_intent_id = $1 
+       OR txn_id = $1::uuid`,
       [id]
     );
 
